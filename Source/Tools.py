@@ -3,9 +3,18 @@ Created on Feb 15, 2013
 
 @author: ozbolt
 '''
+def trailerCheck(str1, str2, year = ""):
+    str1 = str1.lower().replace(" ", "")
+    str2 = str2.lower().replace(" ", "").replace("hq", "").replace("hd", "").replace(str(year), "")
+    
+    return strCmp(str1, str2)    
 
+def strCmp(str1, str2):
+    dl = dameraulevenshtein(str1, str2)
+    siz = max(len(str1), len(str2))
+    return 1-dl/siz
 
-def dameraulevenshtein(self, seq1, seq2):
+def dameraulevenshtein(seq1, seq2):
     '''
     Calculate the Damerau-Levenshtein distance between sequences.
     
@@ -28,19 +37,22 @@ def dameraulevenshtein(self, seq1, seq2):
     It works with arbitrary sequences too:
     >>> dameraulevenshtein('abcd', ['b', 'a', 'c', 'd', 'e'])
     2
+    
+    Got it from: http://code.activestate.com/recipes/576874-levenshtein-distance/
+    Licensed under: MIT opensource license
     '''
     # codesnippet:D0DE4716-B6E6-4161-9219-2903BF8F547F
     # Conceptually, this is based on a len(seq1) + 1 * len(seq2) + 1 matrix.
     # However, only the current and two previous rows are needed at once,
     # so we only store those.
     oneago = None
-    thisrow = range(1, len(seq2) + 1) + [0]
-    for x in xrange(len(seq1)):
+    thisrow = list(range(1, len(seq2) + 1)) + [0]
+    for x in range(len(seq1)):
         # Python lists wrap around for negative indices, so put the
         # leftmost column at the *end* of the list. This matches with
         # the zero-indexed strings and saves extra calculation.
         twoago, oneago, thisrow = oneago, thisrow, [0] * len(seq2) + [x + 1]
-        for y in xrange(len(seq2)):
+        for y in range(len(seq2)):
             delcost = oneago[y] + 1
             addcost = thisrow[y - 1] + 1
             subcost = oneago[y - 1] + (seq1[x] != seq2[y])

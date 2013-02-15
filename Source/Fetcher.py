@@ -13,6 +13,7 @@ import datetime
 import bs4
 from lxml import etree
 import re
+from Tools import *
 
 
 class Fetcher(object):
@@ -140,18 +141,57 @@ class Fetcher(object):
             
         return movies
     
-    def queryYoutubeTrailer(self, title, year, maxResoults = 5):
-        url = "http://gdata.youtube.com/feeds/api/videos?v=2&hd=true&q=" + title.replace(" ", "+") + "+" + str(year) + "" + "&max-results=" + str(maxResoults)
+    def queryYoutubeTrailerHelper(self, title, year, maxResoults = 5, official = True, HD = True):
+        if official: 
+            query = title + " official trailer" 
+        else:
+            query = title + " trailer"
+        
+        url = "http://gdata.youtube.com/feeds/api/videos?v=2&q=" + query.replace(" ", "+") + "&max-results=" + str(maxResoults)
+        if HD:
+            url += "&hd=true"
         
         xml = self.scrape(url)
         xml = xml[xml.find(">")+1:] #removing first not well-formatted tag, leaving well formatted xml
         
         root = etree.fromstring(xml)
-        f = open("tstYoutube.xml", "wb")
-        f.write(etree.tostring(root, pretty_print=True))
-        f.close()
         
+        entries = root.findall("{http://www.w3.org/2005/Atom}entry")
+        
+        ytmovies = []
+        for entrie in entries:
+            tmpMovie = {}
+            tmpT = entrie.find("{http://www.w3.org/2005/Atom}title").text
+            tmpMovie["cmp"] = trailerCheck(query, tmpT, year)
+            if tmpMovie["cmp"] < 0.4:
+                continue
+            group = entrie.find("{http://search.yahoo.com/mrss/}group")
+            dur = int(group.find("{http://search.yahoo.com/mrss/}content").get("duration"))
+            if 60 > dur or dur > 500:
+                continue
+            tmpMovie["id"] = group.find("{http://gdata.youtube.com/schemas/2007}videoid").text
+            ytmovies.append(tmpMovie)
+        
+        if ytmovies == []:
+            return "RT"
+        
+        mov = 0
+        for i in range(len(ytmovies)):
+            if i==0:
+                continue
+            if ytmovies[i]["cmp"] > ytmovies[mov]["cmp"] + 0.05:
+                mov = i
+        
+        return ytmovies[mov]["id"]
     
+    def queryYoutubeTrailer(self, movie):
+        trailer = self.queryYoutubeTrailerHelper(movie.title, movie.year)
+        if trailer == "RT":
+            trailer = self.queryYoutubeTrailerHelper(movie.title, movie.year, HD = False)
+        if trailer == "RT":
+            trailer = self.queryYoutubeTrailerHelper(movie.title, movie.year, official = False, HD = False)
+        return trailer
+  
     def queryTorrentzHelper(self, data, minSeeds = 10, noOfResoults = 5):
         '''
         In data:
@@ -262,22 +302,19 @@ def getTrackerList():
     '''
     return 0
 
-def rtTest():
-    fetcher = Fetcher()
-    movies = fetcher.queryRottenTomatoUpcomming()
-    
-    for m in movies:
-        fetcher.queryOmdbApiQuickUpdate(m)
-        print(m)
-        print(m.id_RT)
+
     
     
 
 if __name__ == "__main__":
-    fetcher = Fetcher()
-    fetcher.queryYoutubeTrailer("The kooks", "Young+Folks")
-
-    
-    
-    
+    print(1)
+        
+        
+        
+        
+        
+        
+        
+        
+        
         
