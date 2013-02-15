@@ -31,6 +31,8 @@ class Fetcher(object):
                 charset = "utf8"
             else:
                 charset = charset[index+8:]
+                if ";" in charset:
+                    charset = charset[0:charset.find(";")]
             
             html = response.read().decode(charset)
             return html
@@ -138,17 +140,33 @@ class Fetcher(object):
             
         return movies
     
+    def queryYoutubeTrailer(self, title, year, maxResoults = 5):
+        url = "http://gdata.youtube.com/feeds/api/videos?v=2&hd=true&q=" + title.replace(" ", "+") + "+" + str(year) + "" + "&max-results=" + str(maxResoults)
+        
+        xml = self.scrape(url)
+        xml = xml[xml.find(">")+1:] #removing first not well-formatted tag, leaving well formatted xml
+        
+        root = etree.fromstring(xml)
+        f = open("tstYoutube.xml", "wb")
+        f.write(etree.tostring(root, pretty_print=True))
+        f.close()
+        
     
-
-
     def queryTorrentzHelper(self, data, minSeeds = 10, noOfResoults = 5):
+        '''
+        In data:
+        - "title"
+        - "year"
+        - "typ" (let's say dvdrip)
+        - "rls" (lets say maxspeed)
+        '''
         
         url = "http://torrentz.eu/feed?q="
         if "title" in data:
             url = url + data["title"].replace(" ", "+") + "+"
         if "year" in data:
             url = url + str(data["year"]) + "+"
-        if "rlsType" in data:
+        if "typ" in data:
             url = url + data["rlsType"] + "+"
         if "rls" in data:
             url = url + data["rls"]
@@ -256,7 +274,8 @@ def rtTest():
     
 
 if __name__ == "__main__":
-    rtTest()
+    fetcher = Fetcher()
+    fetcher.queryYoutubeTrailer("The kooks", "Young+Folks")
 
     
     
