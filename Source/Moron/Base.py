@@ -9,8 +9,8 @@ from datetime import datetime
 class Movie(object):
     '''
     ### Data ###
-    AttributeName   AttTyp
-    *obligatory
+    AttributeName    AttTyp
+    *obligatory 
     
     *title           String
     originalTitle    String
@@ -19,10 +19,10 @@ class Movie(object):
     *genre           {int: String}[]
     *plot            String //Long
     *runTime         int
+    *year            int
     
     *language        {int: String}
     country          {int: String}
-    *subtitle        {int: String}[] //int-languageID
        
     *id_IMDB         int
     id_FB            int
@@ -33,17 +33,22 @@ class Movie(object):
     *IMDB_rating     double
     *IMDB_votes      int
     
+    *released        boolean
     *dateRelease     Date
-    dateDVDrip       Date
-    dateHDrip        Date
-    dateNetflix      Date
-    dateAmazon       Date
+    
+    releasedDVDrip   boolean
+    releasesDVDrip   Release[]
+    
+    releasedBRrip    boolean
+    releasesBRrip    Release[]
+    
+    releasedNetflix  boolean
+    releaseNetflix   Release
+    
+    releasedAmazon   boolean
+    releaseAmazon    Release
     
     linkTrailer      String
-    linkDVDrip       String
-    linkHDrip        String
-    linkNetflix      String
-    linkAmazon       String
     *linkPhoto       String
     linkSite         String
     
@@ -57,13 +62,13 @@ class Movie(object):
                  genre = {}, 
                  plot = "", 
                  runTime = -1, 
-                 language = {}, 
-                 subtitle = {},
+                 language = {},
                  id_IMDB = -1,
                  IMDB_rating = -1.0,
                  IMDB_votes = -1,
                  dateRelease = datetime(1970,1,1),
-                 linkPhoto = "" ):
+                 linkPhoto = "",
+                 year = -1):
         '''
         Constructor creates obligatory attributes
         '''
@@ -74,43 +79,70 @@ class Movie(object):
         self.plot = plot
         self.runTime = runTime
         self.language = language
-        self.subtitle = subtitle
         self.id_IMDB = id_IMDB
         self.IMDB_rating = IMDB_rating
         self.IMDB_votes = IMDB_votes
         self.dateRelease = dateRelease
         self.linkPhoto = linkPhoto
-    
-    def addAtributes(self, data):
-        for at in self.attributes:
-            if at in data:
-                print(at, ":", data[at])
-                self.allD[at] = data[at]
-            else:
-                print("Error: attribute ", at, " not found")
-                #raise 
-        for at in self.attributesOther:
-            if at in data:
-                print(at, " : ", data[at])
-                self.allD[at] = data[at]
-
-class Base:
-    '''
-    classdocs
-    '''
-
-
-    def __init__(self):
-        '''
-        Constructor
-        '''
+        self.year = year
         
-    def creatBase(self):
-        print(")")
-      
-      
-if __name__ == "__main__":    
-    a = Movie()
+    def constructDict(self, additional = False):
+        variables = ["title", "director", "actor", "year", "genre", "plot", "runTime", "language", "id_IMDB", "IMDB_rating", "IMDB_votes", "dateRelease", "linkPhoto"]
+        toRet = dict( (v, getattr(self, v)) for v in variables)
+        return toRet
+        
+    def __str__(self):
+        toRet = ""
+        dct = self.constructDict()
+        for k,v in dct.items():
+            v = str(v)
+            toRet += k +  " : " + v + "\n"
+        return toRet
     
-    data = {'title': 'La vita e bella', 'director': {1: "Roberto Benigni", 7: "Rod Dean"}, "id_FB" : 12345}
-    a.addAtributes(data)  
+class Release:
+    '''
+    ### Data ###
+    AttributeName    AttTyp 
+    
+    typ             int
+    imdbID          int
+    link            String
+    releaseDate     Date
+    data            {k:v}
+       
+    
+    type:
+        1 - DVDrip
+        2 - BDrip
+        3 - netflix
+        4 - amazon
+    
+    data1
+        type{1,2}: 
+         - size    int
+         - seed    int
+         - leechs  int
+         - rls     String
+         - hash    torrentzHash
+        type{4}:
+         - avaliable  1(Prime), 2(Rent), 3(Buy)
+         - price      int
+
+    #Functions 
+    
+    '''
+
+    def __init__(self, typ, id_IMDB, link, released, data):
+        self.typ = typ
+        self.imdbI = id_IMDB
+        self.released = released
+        self.data = data    
+    
+
+
+
+if __name__ == "__main__":    
+    a = Movie(title = 'La vita e bella',
+              director = "Roberto Benigni")
+    
+    print(a)
