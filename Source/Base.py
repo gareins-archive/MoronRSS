@@ -36,11 +36,9 @@ class Movie(object):
     *released        boolean
     *dateRelease     Date
     
-    releasedDVDrip   boolean
-    releasesDVDrip   Release[]
-    
-    releasedBRrip    boolean
-    releasesBRrip    Release[]
+    releasedSQ       boolean
+    releasedHD       boolean
+    releases         Release[]
     
     releasedNetflix  boolean
     releaseNetflix   Release
@@ -85,6 +83,10 @@ class Movie(object):
         self.dateRelease = dateRelease
         self.linkPhoto = linkPhoto
         self.year = year
+        self.releases = []
+        
+    def hasRelease(self, name):
+        return False
         
     def constructDict(self, additional = False):
         variables = ["title", "director", "actor", "year", "genre", "plot", "runTime", "language", "id_IMDB", "IMDB_rating", "IMDB_votes", "dateRelease", "linkPhoto"]
@@ -105,23 +107,22 @@ class Release:
     AttributeName    AttTyp 
     
     typ             int
-    imdbID          int
     link            String
     releaseDate     Date
     data            {k:v}
        
     
     type:
-        1 - DVDrip
-        2 - BDrip
+        1 - SQ [500MB < rip < 1.5GB]
+        2 - HD [1080p] [2.GB < rip < 10GB]
         3 - netflix
         4 - amazon
     
-    data1
+    data
         type{1,2}: 
          - size    int
-         - seed    int
-         - leechs  int
+         - seeds    int
+         - peers    int
          - rls     String
          - hash    torrentzHash
         type{4}:
@@ -132,17 +133,29 @@ class Release:
     
     '''
 
-    def __init__(self, typ, id_IMDB, link, released, data):
+    def __init__(self, typ, link = "", releaseDate = None, data = {}):
         self.typ = typ
-        self.imdbI = id_IMDB
-        self.released = released
-        self.data = data    
-    
+        self.releaseDate = releaseDate
+        self.data = data
+        self.link = link
+        
+    def __str__(self):
+        variables = ["typ", "link", "releaseDate"]
+        dIct = dict( (v, getattr(self, v)) for v in variables)
+        
+        toRet = ""
+        for k,v in dIct.items():
+            v = str(v)
+            toRet += k +  " : " + v + "\n"
+        for k,v in self.data.items():
+            toRet += "  " + k + " : " + str(v) + "\n"
+            
+        return toRet
 
 
 
 if __name__ == "__main__":    
-    a = Movie(title = 'La vita e bella',
-              director = "Roberto Benigni")
+    r = Release(1, "mja", "vceraj", {"bla": None})
+    print(r)
     
-    print(a)
+    

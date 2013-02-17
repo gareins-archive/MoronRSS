@@ -8,7 +8,7 @@ APIKEY_RT = "zj3y2qsm6q2t5pef2spv7bnd"
 
 import urllib.request, urllib.error
 import json
-from Base import Movie
+from Base import Movie, Release
 import datetime
 import bs4
 from lxml import etree
@@ -41,6 +41,9 @@ class Fetcher(object):
         except urllib.error.HTTPError as e:
             print(e.code)
             print(e.read())
+        except UnicodeDecodeError as e:
+            return "<html></html>"
+            pass
             
     def queryOmdbApiHelper(self, data):
         url = "http://www.omdbapi.com/?"
@@ -197,8 +200,7 @@ class Fetcher(object):
         In data:
         - "title"
         - "year"
-        - "typ" (let's say dvdrip)
-        - "rls" (lets say maxspeed)
+        - "typ" (0,1)
         '''
         
         url = "http://torrentz.eu/feed?q="
@@ -206,10 +208,15 @@ class Fetcher(object):
             url = url + data["title"].replace(" ", "+") + "+"
         if "year" in data:
             url = url + str(data["year"]) + "+"
-        if "typ" in data:
-            url = url + data["rlsType"] + "+"
-        if "rls" in data:
-            url = url + data["rls"]
+            
+        if data["typ"] == 0:
+            mIn, mAx = 600, 1500
+            url = url + "dvdrip" + "+"
+        elif data["typ"] == 1:
+            mIn, mAx = 2000, 10000
+            url = url + "1080p" + "+"
+        else:
+            raise
         
         xml = self.scrape(url)
         root = etree.fromstring(xml)[0]
@@ -223,40 +230,162 @@ class Fetcher(object):
                 continue
             
             tmpRelease = {}
-            small = False
+            bad = False
             
             for child in root[i]:
                 if child.tag == "description":
-                    tmpData = {}
                     description = re.split('[a-z]+: ', child.text, flags=re.IGNORECASE)
-                    tmpData["seeds"] = int(description[2].replace(",", ""))
-                    
-                    if "KB" in description[1] or len(description[1]) < 6 or tmpData["seeds"] < minSeeds:
-                        small = True
+                    tmpRelease["seeds"] = int(description[2].replace(",", ""))
+                    tmpRelease["size"] = int(description[1][0:-3])
+                    if "KB" in description[1] or len(description[1]) < 6 or tmpRelease["seeds"] < minSeeds or not (mIn < tmpRelease["size"] < mAx):
+                        bad = True
+                        break
                     else:
-                        tmpData["size"] = int(description[1][0:-3])
-                        tmpData["peers"] = int(description[3].replace(",", ""))
-                        tmpData["hash"] = description[4]
-                    tmpRelease["data"] = tmpData
+                        tmpRelease["peers"] = int(description[3].replace(",", ""))
+                        tmpRelease["hash"] = description[4]
                 elif child.tag == "title":
+                    if " TS " in child.text:
+                        bad = True
+                        break
                     tmpRelease["title"] = child.text
-                #elif child.tag == "pubDate":
-                    #tmpRelease["releaseDate"] = datetime.datetime.strptime(child.text, "%a, %d %b %Y %H:%M:%S +0000")
+                elif child.tag == "pubDate":
+                    tmpRelease["releaseDate"] = datetime.datetime.strptime(child.text, "%a, %d %b %Y %H:%M:%S +0000")
                 
             i = i + 1
-            if small:
+            if bad:
                 continue                    
             releases.append(tmpRelease)
-        '''
-        for r in releases:
-            for k,v in r.items():
-                print(k,":",v)
-            print("\n")
-        '''
             
         return releases
+    
+    def queryTorrentz(self, movie, typ):
         
-        #print(etree.tostring(root).decode("utf8"))
+        ###typ = (0,1) - (SQ, HD)
+        
+        data = {"title": movie.title, "year": movie.year, "typ": typ}
+        data = self.queryTorrentzHelper(data)       
+        
+        if data == []:
+            return
+        for d in data:
+            rls = getReleaser(movie.title, movie.year, d["title"])
+            if movie.hasRelease(rls):
+                continue
+            else:
+                r = Release(typ, self.fetchMagnetFromHash(d["hash"]), d["releaseDate"])
+                tmpData = {}
+                tmpData["size"] = d["size"]
+                tmpData["seeds"] = d["seeds"]
+                tmpData["peers"] = d["peers"]
+                tmpData["hash"] = d["hash"]
+                tmpData["rls"] = rls
+                r.data = tmpData
+            movie.releases.append(r)
+    
+    def updateMovieReleases(self, movie):
+        for R in movie.releases:
+            #if R.type == 3:
+                #netflix, program in later
+            #elif R.type == 4
+                #ama\on, later
+            #else:
+            seeds, peers = self.fetchTorrentzInfoUpdate(R.data["hash"])
+            if seeds + peers == -2:
+                raise
+            R.data["peers"] = peers
+            R.data["seeds"] = seeds
+    
+    def fetchTorrentzInfoUpdate(self, hsh):
+        url = "http://torrentz.eu/" + hsh
+        html = self.scrape(url)
+        soup = bs4.BeautifulSoup(html)
+        seeds, peers = -1, -1
+        
+        for div in soup.body.find_all("div"):
+            if div.has_key("class"):            
+                if div["class"][0] == "trackers":
+                    for span in div.dl.dd.find_all("span"):
+                        if span.has_key("class"):
+                            if span["class"][0] == "u":
+                                seeds = int(span.string)
+                            elif span["class"][0] == "d":
+                                peers = int(span.string)
+        return seeds, peers
+
+    def fetchMagnetFromHash(self, hsh):
+        url = "http://torrentz.eu/" + hsh
+        sortedSites = [
+                     [
+                      "bitsnoop.com",
+                      "rarbg.com"
+                      ],
+                     [
+                      "torrents.net",
+                      "thepiratebay.se",
+                      "torrentreactor.net",
+                      "1337x.org",
+                      "monova.org",
+                      "torrentcrazy.com",
+                      "movietorrents.eu",
+                      ],
+                     [
+                      "torrentdownloads.me", 
+                      "kickasstorrents.com", 
+                      "seedpeer.me",
+                      "extratorrent.com", 
+                      "thepiratebay.org",
+                      ],
+                     [
+                      "h33t.com", 
+                      "fenopy.se",
+                      "vertor.com",
+                      "torrentzap.com",
+                      "kat.ph"
+                      ]
+                     ]
+
+        gathered = {}
+        
+        ### Gather all the sites with magnet, that poses this torrent
+        
+        html = self.scrape(url)
+        soup = bs4.BeautifulSoup(html)
+        for div in soup.body.find_all("div"):
+            try:
+                if div["class"][0] == "download":
+                    for dl in div:
+                        try:
+                            gathered[dl.dt.a.span.string] = dl.dt.a["href"]          
+                        except:
+                            pass
+            except:
+                pass
+ 
+        for site, link in gathered.items():
+            for sites in sortedSites:
+                if site in sites:
+                    link = self.fetchMagnet(link)
+                    if link:
+                        return link
+    
+    def fetchMagnet(self, url):
+        try:
+            html = self.scrape(url)                
+            frOm = html.find("\"magnet:?")
+            if frOm < 0:
+                return None
+            tO = html.find("\"", frOm+1)
+            html = html[frOm+1:tO]
+            
+            tO = html.find("&amp;")
+            tO_2 = html.find("&dn=")
+            tO = (tO != -1) * tO + (tO == -1) * tO_2
+            
+            if tO != -1:
+                html = html[0:tO] 
+            return html
+        except:
+            pass
  
    
 def getTrackerList():
@@ -303,11 +432,67 @@ def getTrackerList():
     return 0
 
 
-    
-    
 
 if __name__ == "__main__":
-    print(1)
+    m = Movie()
+    m.title = "finding nemo"
+    m.year = 2003
+    
+    f = Fetcher()
+        
+    f.queryTorrentz(m, 0)
+    print(m.releases)
+
+    
+    '''
+    ret = f.queryTorrentzHelper({"title": "wreck it ralph"})
+    for r in ret:
+        tajm = r["releaseDate"]
+    
+    
+    hshs = ["188aa63c64e1d6b64b74f5be36cb9244c08a3456", 
+            "188aa63c64e1d6b64b74f5be36cb9244c08a3456", 
+            "83093cf4fb27e4874d14f60d483aef3c7959e0a0", 
+            "24a090e2e44aeaca73c81aabc97eaf9c7c20af24", 
+            "e4419bbaafb2326b613d145aaa2342957c578d8c", 
+            "6d7882c59d6555283745f31e0492ac8d041132a1", 
+            "a8e59139ddd8ab84c4d46104f0a6a7432c6530ca", 
+            "e39b837c003fa6e23aaf18fe4a02541ce19445c9", 
+            "0e7cb7bf1f3b855a1f653c98a8ab1e95f9aa089a",
+            "fd3bc2ee4e11773186db9758b14b1c17f1acbed5",
+            "c0b85bde9dde3b56c78ff29f00bae24b1493abce",
+            "ce1fc50bffb09962be8f3c49478cbeb65e2afe0f",
+            "a0c2982e0b45552cd46284db6563a1a2112bce67",
+            "3c64a0ddf992e106abf2af938bceb76488d2583e",
+            "9208cc67483704c84096d9747b4ed970e56bc8ac",
+            "d9f7719922d00d4f2ae59c514dc2aee7a2938dc9",
+            "90851fdb47636d9274eb546407be5f484a3a49a6",
+            "b2bc9f66a6ac77d5e80db4d4f6a7bd8242c98dca",
+            "a29743e386acc7814d5b96b8246125f9a24f4151",
+            "1c1cd66edc73cf14e5db5bd54b244aab737087a9",
+            "e2f5358dad9ad33cbdf7248abab957e9996eef4f",
+            "7875fa4e577d30f0caab833616c3f6a6d02bc173",
+            "1722a4c54d8d4ee60ca89e2d49f04a152d4b72d7",
+            "609de93708cd15deaa6e1adac399590691cc4cfd",
+            "80898ab7f1597e65d69ede2c7e40e0ac369f65c6",
+            "9208cc67483704c84096d9747b4ed970e56bc8ac",
+            "245f9f9e5458748e7582a09883e7879c050be3d6",
+            "c80497de8157dc3417bc386a633361c2573e2552",
+            "92b846558fdd4fbaacfb2cfc3772cab545b4e943",
+            "2c8d4e9a70037ea02f2248810ea678381c19eb6f",
+            "b0873a3dea67c02dcef1bfa360eb7ab09a40aec6",
+            "b0a0c269c36a874d717f79670803020c29258f80",
+            "a4850d6810353bb5abcee94696ce8ef56e9a5198",
+            "97fcb67b12232635260662783981b71183cd1af8",
+            "6ab51c7844ff6c57bd5881c58f13b5ad5d05e766",
+            "ecf1de43a7fd1dda110c99a2cf83dd1532e811fd",
+            "a91b28be435abf3e33f0c732c82a490e9ae607c4",
+            "426999574f12d1a737d5e54f041985e37230f510"]
+    
+    for h in hshs:
+        a = f.fetchMagnetFromTorrentzHelper(h)
+        print(a)
+    
         
         
         
@@ -317,4 +502,4 @@ if __name__ == "__main__":
         
         
         
-        
+        '''

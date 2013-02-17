@@ -1,0 +1,28 @@
+h33t.com : 35 , 		average:  1.1998191016060966	4
+torrents.net : 30 ,		average:  0.40545310179392496	2
+thepiratebay.se : 29 ,		average:  0.3361019841555891	2
+bitsnoop.com : 29 , 		average:  0.04555594510045545	1
+torrentreactor.net : 28 , 	average:  0.41250976494380404	2
+torrentdownloads.me : 28 , 	average:  0.768083359513964	3
+kickasstorrents.com : 28 , 	average:  1.046151442187173	3
+1337x.org : 26 , 		average:  0.3054027557373047	2
+monova.org : 25 , 		average:  0.36075462341308595	2
+seedpeer.me : 25 , 		average:  0.6680710220336914	3
+extratorrent.com : 22 , 	average:  0.6486449458382346	3
+fenopy.se : 22 , 		average:  1.9280045899477871	4
+torrentcrazy.com : 17 , 	average:  0.3127385588253246	2
+rarbg.com : 16 , 		average:  0.16420875489711761	1
+vertor.com : 14 , 		average:  9.987763268607003	4
+torrentzap.com : 13 , 		average:  1.065823481633113	4
+movietorrents.eu : 12 , 	average:  0.30020982027053833	2
+thepiratebay.org : 12 , 	average:  0.8529102007548014	3
+kat.ph : 3 , 			average:  2.3200227419535318	4
+publichd.se : 0
+mininova.org : 0
+
+
+
+
+
+
+

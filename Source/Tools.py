@@ -3,16 +3,22 @@ Created on Feb 15, 2013
 
 @author: ozbolt
 '''
+#regulars = ["dual audio", "3d", "mkv", "mp4", "hd", "hq", "english", "x264", "xvid", "brrip", "bdrip", "720p", "1080p", "dvdrip", "ac3", "extended", "extended cut", " ee ", " "]
 def trailerCheck(str1, str2, year = ""):
     str1 = str1.lower().replace(" ", "")
     str2 = str2.lower().replace(" ", "").replace("hq", "").replace("hd", "").replace(str(year), "")
     
     return strCmp(str1, str2)    
 
+#def releaseCheck(str1, str2, year):
+
 def strCmp(str1, str2):
     dl = dameraulevenshtein(str1, str2)
     siz = max(len(str1), len(str2))
     return 1-dl/siz
+
+def getReleaser(movieTitle, movieYear, releaseName):
+    return releaseName
 
 def dameraulevenshtein(seq1, seq2):
     '''
