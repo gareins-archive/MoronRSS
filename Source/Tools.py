@@ -3,7 +3,11 @@ Created on Feb 15, 2013
 
 @author: ozbolt
 '''
-#regulars = ["dual audio", "3d", "mkv", "mp4", "hd", "hq", "english", "x264", "xvid", "brrip", "bdrip", "720p", "1080p", "dvdrip", "ac3", "extended", "extended cut", " ee ", " "]
+
+import json, re
+
+RELEASERS = "releasers.txt"
+
 def trailerCheck(str1, str2, year = ""):
     str1 = str1.lower().replace(" ", "")
     str2 = str2.lower().replace(" ", "").replace("hq", "").replace("hd", "").replace(str(year), "")
@@ -17,8 +21,38 @@ def strCmp(str1, str2):
     siz = max(len(str1), len(str2))
     return 1-dl/siz
 
-def getReleaser(movieTitle, movieYear, releaseName):
-    return releaseName
+def getReleaser(movieTitle, releaseName):
+        if not isAscii(releaseName):
+            return None
+        
+        f = open(RELEASERS)
+        releasers = json.load(f)
+        f.close()
+        
+        for r in releasers[0]:
+            if r in movieTitle:
+                continue
+            if r in releaseName:
+                return r
+            
+        for p,r in releasers[1].items():
+            if re.search(p, releaseName):
+                return r
+        
+        for r in releasers[2]:
+            if r in movieTitle:
+                continue
+            if r in releaseName:
+                return r
+        
+        for r in releasers[3]:
+            if r in releaseName:
+                return None
+        
+        return "UNKNOWN release: #%s#" % releaseName
+
+def isAscii(s):
+    return all(ord(c) < 128 for c in s)
 
 def dameraulevenshtein(seq1, seq2):
     '''

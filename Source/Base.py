@@ -4,7 +4,7 @@ Created on Feb 13, 2013
 @author: ozbolt
 '''
 
-from datetime import datetime
+from datetime import date
 
 class Movie(object):
     '''
@@ -32,6 +32,9 @@ class Movie(object):
     
     *IMDB_rating     double
     *IMDB_votes      int
+    *boxOffice       int
+    rt_critics       int
+    rt_audience      int
     
     *released        boolean
     *dateRelease     Date
@@ -64,9 +67,10 @@ class Movie(object):
                  id_IMDB = -1,
                  IMDB_rating = -1.0,
                  IMDB_votes = -1,
-                 dateRelease = datetime(1970,1,1),
+                 dateRelease = None,
                  linkPhoto = "",
-                 year = -1):
+                 year = -1,
+                 boxOffice = 0):
         '''
         Constructor creates obligatory attributes
         '''
@@ -84,12 +88,17 @@ class Movie(object):
         self.linkPhoto = linkPhoto
         self.year = year
         self.releases = []
+        self.boxOffice = 0
+        self.releases = []
         
-    def hasRelease(self, name):
+    def hasRelease(self, rls):
+        for r in self.releases:
+            if r.data["rls"] == rls:
+                return True
         return False
         
     def constructDict(self, additional = False):
-        variables = ["title", "director", "actor", "year", "genre", "plot", "runTime", "language", "id_IMDB", "IMDB_rating", "IMDB_votes", "dateRelease", "linkPhoto"]
+        variables = ["title", "director", "actor", "year", "genre", "plot", "runTime", "language", "id_IMDB", "IMDB_rating", "IMDB_votes", "boxOffice", "dateRelease", "linkPhoto"]
         toRet = dict( (v, getattr(self, v)) for v in variables)
         return toRet
         
@@ -125,9 +134,12 @@ class Release:
          - peers    int
          - rls     String
          - hash    torrentzHash
+        type{3}:
+         - HD    True/False
         type{4}:
          - avaliable  1(Prime), 2(Rent), 3(Buy)
          - price      int
+        
 
     #Functions 
     

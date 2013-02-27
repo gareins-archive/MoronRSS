@@ -1,0 +1,29 @@
+[
+ [
+  "bitsnoop.com", 
+  "rarbg.com"
+ ], 
+ [
+  "torrents.net", 
+  "thepiratebay.se", 
+  "torrentreactor.net", 
+  "1337x.org", 
+  "monova.org", 
+  "torrentcrazy.com", 
+  "movietorrents.eu"
+ ], 
+ [
+  "torrentdownloads.me", 
+  "kickasstorrents.com", 
+  "seedpeer.me", 
+  "extratorrent.com", 
+  "thepiratebay.org"
+ ], 
+ [
+  "h33t.com", 
+  "fenopy.se", 
+  "vertor.com", 
+  "torrentzap.com", 
+  "kat.ph"
+ ]
+]
