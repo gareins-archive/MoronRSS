@@ -4,8 +4,6 @@ Created on Feb 13, 2013
 @author: ozbolt
 '''
 
-from datetime import date
-
 class Movie(object):
     '''
     ### Data ###
@@ -15,8 +13,8 @@ class Movie(object):
     *title           String
     originalTitle    String
     *director        String
-    *actor           {int: String}[]
-    *genre           {int: String}[]
+    *actors          {id, name}[]
+    *genres          {int: String}[]
     *plot            String //Long
     *runTime         int
     *year            int
@@ -49,7 +47,7 @@ class Movie(object):
     releasedAmazon   boolean
     releaseAmazon    Release
     
-    linkTrailer      String
+    trailer          String
     *linkPhoto       String
     linkSite         String
     
@@ -59,8 +57,8 @@ class Movie(object):
     
     def __init__(self, title = '', 
                  director = "", 
-                 actor = {}, 
-                 genre = {}, 
+                 actors = {}, 
+                 genres = {}, 
                  plot = "", 
                  runTime = -1, 
                  language = {},
@@ -76,8 +74,8 @@ class Movie(object):
         '''
         self.title = title
         self.director = director
-        self.actor = actor
-        self.genre = genre
+        self.actors = actors
+        self.genres = genres
         self.plot = plot
         self.runTime = runTime
         self.language = language
@@ -97,9 +95,18 @@ class Movie(object):
                 return True
         return False
         
-    def constructDict(self, additional = False):
-        variables = ["title", "director", "actor", "year", "genre", "plot", "runTime", "language", "id_IMDB", "IMDB_rating", "IMDB_votes", "boxOffice", "dateRelease", "linkPhoto"]
+    def constructDict(self, additional = True):
+        variables = ["title", "director", "actors", "year", "genres", "plot", "runTime", "language", "id_IMDB", "IMDB_rating", "IMDB_votes", "boxOffice", "dateRelease", "linkPhoto"]
         toRet = dict( (v, getattr(self, v)) for v in variables)
+        if not additional:
+            return toRet
+        optVars = ["originalTitle", "id_RT", "id_FB", "id_Netflix", "id_Amazon", "rt_critics", "rt_audience", "releasedHD", "releasedSQ", "releases", "releasedNetflix", "releasedAmazon", "releaseNetflix", "releaseNetflix", "trailer", "linkSite"]
+        for v in optVars:
+            try:
+                toRet[v] = getattr(self, v)
+            except:
+                pass
+        
         return toRet
         
     def __str__(self):

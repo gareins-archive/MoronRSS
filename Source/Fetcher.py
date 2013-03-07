@@ -1,159 +1,122 @@
+#!/usr/bin/python3
+
 '''
 Created on Feb 13, 2013
 
 @author: ozbolt
 '''
 
-APIKEY_RT = "zj3y2qsm6q2t5pef2spv7bnd"
-
-import urllib.request, urllib.error
-from urllib.parse import urlparse
 from Base import Movie, Release
-import datetime
-import bs4
-from lxml import etree
 from Tools import *
-from time import time
+import MoronicExceptions
+from Keys import APIKEY_RT
 
+from urllib.parse import urlparse
+from datetime import datetime, date
+from time import sleep
+import sys
 import threading
 
-########################
-###  Config Folders  ###
-########################
+import bs4
+from lxml import etree
+import requests
 
-TORRENT_WEBSITES = "torrentSites.txt"
-RELEASERS = "releasers.txt"
-URLS_WAIT_TIME = "../config/urlsWait.json"
-URLS_LAST_OPENED = "../config/urlsLast.json"
 
 class Fetcher(threading.Thread):
     
-    keywords = {"query": "",
-                "movie": None, 
-                "else": None} 
+    q = ""
+    m = None 
     
     def run(self):
-        query = self.keywords["query"]
-        
-        if query == "movieDetails":
-            self.queryOmdbApiFull(self.keywords["movie"])
-        elif query == "movieUpdate":
-            self.queryOmdbApiQuickUpdate(self.keywords["movie"])
-        elif query == "upcoming":
+                
+        if self.q == "movieDetails":
+            self.queryMovieDetails(self.m)
+        elif self.q == "movieUpdate":
+            self.queryOmdbApiQuickUpdate(self.m)
+        elif self.q == "upcoming":
             return self.queryRottenTomatoList("U")
-        elif query == "boxOffice":
+        elif self.q == "boxOffice":
             return self.queryRottenTomatoList("B")
-        elif query == "dvdReleases":
+        elif self.q == "dvdReleases":
             return self.queryRottenTomatoList("D")
-        elif query == "trailer":
-            self.queryYoutubeTrailer(self.keywords["movie"])
-        elif query == "dvdrip":
-            self.queryTorrentz(self.keywords["movie"])
-        
+        elif self.q == "trailer":
+            self.queryYoutubeTrailer(self.m)
+        elif self.q== "dvdrip":
+            self.queryTorrentz(self.m)
             
-        #{"torrentz.eu": 0.1}
+    def scrape(self, url, params = {}):
+        
+        i = 0
+        while True:
+            netloc = urlparse(url).netloc
             
-    def scrape(self, someurl):
-        
-        
-        print("\tscraping: " + someurl)
-        
-        permitted = False
-        while not permitted:
-            netloc = urlparse(someurl).netloc
-            now = time()
-            
-            f = open(URLS_LAST_OPENED, "r")
-            lastOpened = json.load(f)
+            f = open(URLS_LOCK, "r")
+            try: #if 2 reads at once
+                locks = json.load(f)
+            except:
+                sleep(0.01)
+                continue
             f.close()
             
-            #print("decoding1:", lastOpened)
-            
-            if netloc in lastOpened:
-                lastTime = lastOpened[netloc]
+            if netloc in locks:
+                lock = locks[netloc]
             else:
-                lastTime = 0
-            
-            f = open(URLS_WAIT_TIME, "r")
-            waitTimes = json.load(f)
-            f.close()
-            
-            #print("decoding2", waitTimes)
-            
-            if netloc in waitTimes:
-                waitTime = waitTimes[netloc]
-            else:
-                waitTimes[netloc] = 0.1
-                f = open(URLS_WAIT_TIME, "w")
-                json.dump(waitTimes, f)
-                f.close()
-                waitTime = 0.1
-
-                    
-            if now - lastTime > waitTime:
-                f = open(URLS_LAST_OPENED, "r")
-                lastOpened = json.load(f)
-                lastOpened[netloc] = now
-                #print("all good, dumping: ", lastOpened)
-                f = open(URLS_LAST_OPENED, "w")
-                json.dump(lastOpened, f)
+                lock = False
+                
+            if not lock:
+                f = open(URLS_LOCK, "w")
+                locks[netloc] = True
+                json.dump(locks, f)
                 f.close()
                 break
+            elif i < 10:
+                sleep(1)
+                i = i + 1
+            else:
+                raise MoronicExceptions.ResourceBusy(netloc)
+        
+        try:
+            r = requests.get(url, params=params)
+            html = r.text
+            print("scraped:", netloc)
+            sys.stdout.flush()
             
-            try:
-                print("sleeping...WT")
-                time.sleep(waitTime)
-                print("awake!")
-            except:
-                print("sleeping...")
-                time.sleep(0.1)
-                print("awake!")
-        
-        html = ""
-        i = 0
-        while html == "" and i<2:
-            i = i + 1
-            try:            
-                response = urllib.request.urlopen(someurl)
-                
-                charset = response.info()['Content-Type']
-                index = charset.find("charset=")
-                
-                if index < 0:
-                    charset = "utf8"
-                else:
-                    charset = charset[index+8:]
-                    if ";" in charset:
-                        charset = charset[0:charset.find(";")]
-                
-                html = response.read().decode(charset)
-    
-            except urllib.error.HTTPError as e:
-                print(e.code)
-                print(e.read())
-            except UnicodeDecodeError as e:
-                print("decoding failed!")
-        
-        if not html:
-            print("not scraped: ", someurl)
-        return html
+            f = open(URLS_LOCK, "r")
+            locks = json.load(f)
+            f = open(URLS_LOCK, "w")
+            locks[netloc] = False
+            json.dump(locks, f)
+            f.close()
+            
+            return html
+            
+        except requests.exceptions.ConnectionError:
+            raise MoronicExceptions.ResourceUnavaliable(netloc)
             
     def _queryOmdbApiHelper(self, title = "", id_IMDB = -1, year = -1):
-        url = "http://www.omdbapi.com/?plot=full&"
+        url = "http://www.omdbapi.com"
+        params = {"plot": "full"}
         
+        i = ""
         if id_IMDB != -1:
             i = "tt0000000"[:9 - len('%d' % id_IMDB)] + str(id_IMDB)
-            url += "i=" + i + "&"
-        elif year != -1:
-            url += "y=" + str(year) + "&"
-        url += "t=" + title.lower().replace(" ", "+")
-
-        jsonData = self.scrape(url)
+            params["i"] = i
+        else:
+            params["y"] = year
+            params["t"] = title
+        
+        jsonData = self.scrape(url, params)
         data = json.loads(jsonData)
                 
         if data["Response"] == "False":
-            raise 
+            raise MoronicExceptions.ResourceUnavaliable("www.omdbapi.com")
         return data
+    
+    def queryMovieDetails(self, movie):
+        a = self.queryOmdbApiFull(movie)
+        self.queryRottenTomatoMovieFull(movie)
+        if a == "NF":
+            self.queryOmdbApiFull(movie)
     
     def queryOmdbApiFull(self, movie):
         
@@ -161,21 +124,31 @@ class Fetcher(threading.Thread):
             data = self._queryOmdbApiHelper(id_IMDB = movie.id_IMDB)
         else:
             data = self._queryOmdbApiHelper(title = movie.title, year = movie.year)
-        
-        try:
+               
+        if "Title" in data:
             movie.title = data["Title"]
+        if "Year" in data:
             movie.year = data["Year"]
+        if data["imdbRating"] != "N/A":
             movie.IMDB_rating = float(data["imdbRating"])
+        if data["imdbVotes"] != "N/A":
             movie.IMDB_votes = int(data["imdbVotes"].replace(",", ""))
+        if "imdbID" in data:
             movie.id_IMDB = int(data["imdbID"][2:])
+        if "Director" in data:
             movie.director = data["Director"]
-            movie.actor = data["Actors"].split(", ")
-            movie.genre = data["Genre"].split(", ")
+        if "Actors" in data:
+            movie.actors = data["Actors"].split(", ")
+        if "Genre" in data:
+            movie.genres = data["Genre"].split(", ")
+        if "Plot" in data:
             movie.plot = data["Plot"]
-            movie.dateRelease = datetime.datetime.strptime(data["Released"], "%d %b %Y" )
+        if "Released" in data:
+            movie.dateRelease = datetime.strptime(data["Released"], "%d %b %Y" )
+        if movie.linkPhoto == "" and data["Poster"] != "N/A":
+            movie.linkPhoto = data["Poster"]
+        if data["Runtime"] != "N/A":
             runtime = data["Runtime"].split(" ")
-            print(runtime)
-            
             if "h" in runtime:
                 h = int(runtime[0])
                 m = 0
@@ -185,14 +158,6 @@ class Fetcher(threading.Thread):
                 h = 0
                 m = int(runtime[0])
             movie.runTime = h*60 + m
-            
-            if data["Poster"] != "N/A":
-                movie.linkPhoto = data["Poster"]
-            else:
-                movie.linkPhoto = ""
-             
-        except:
-            print("Update data not full")
     
     def queryOmdbApiQuickUpdate(self, movie):
         '''
@@ -216,7 +181,7 @@ class Fetcher(threading.Thread):
         except:
             print("Update data not avaliable")
         
-    def queryRottenTomatoList(self, listType, resoultLen = 20, country = "us"):
+    def queryRottenTomatoList(self, listType, resoultLen = 20):
         
         url = "http://api.rottentomatoes.com/api/public/v1.0/lists"
         if listType == "U":
@@ -226,12 +191,12 @@ class Fetcher(threading.Thread):
         elif listType == "D":
             url += "/dvds/new_releases.json?"
         
-        url += "page=1&"
-        url += "page_limit=" + str(resoultLen)
-        url += "&country=" + country
-        url += "&apikey=" + APIKEY_RT
+        params = {"page": 1,
+                  "page_limit": resoultLen,
+                  "country": "us",
+                  "apikey": APIKEY_RT}
         
-        response = self.scrape(url)
+        response = self.scrape(url, params)
         
         data = json.loads(response)
         
@@ -244,16 +209,17 @@ class Fetcher(threading.Thread):
                 continue
             m = Movie()
             m.id_IMDB = int(movie["alternate_ids"]["imdb"])
-            m.plot = movie["synopsis"]
+            #m.plot = movie["synopsis"]
             m.title = movie["title"]
             m.year = movie["year"]
             #if "theater" in movie["release_dates"]:
-            #    m.dateRelease = datetime.datetime.strptime(movie["release_dates"]["theater"], "%Y-%m-%d")
-            m.linkPhoto = movie["posters"]["original"]
+            #    m.dateRelease = datetime.strptime(movie["release_dates"]["theater"], "%Y-%m-%d")
+            #m.linkPhoto = movie["posters"]["original"]
             #m.runTime = movie["runtime"]
             m.id_RT = movie["id"]
-            m.boxOffice = i
-            i = i+1
+            if listType == "D":
+                m.boxOffice = i
+                i = i+1
                         
             movies.append(m)
 
@@ -262,61 +228,88 @@ class Fetcher(threading.Thread):
             
         return movies
     
-    def queryRottenTomatoMovie(self, movie):
-        url = "http://api.rottentomatoes.com/api/public/v1.0/movies.json?q="
-        url += movie.title.replace(" ", "+") + "%20" + movie.year
-        url += "&page_limit=3&apikey=zj3y2qsm6q2t5pef2spv7bnd"
+    def queryRottenTomatoMovieFull(self, movie):
+        url = "http://api.rottentomatoes.com/api/public/v1.0/movies.json?"
+        params = {"q": movie.title + " %s" % movie.year,
+                  "page_limit": 3,
+                  "apikey": APIKEY_RT}
         
-        returned = self.scrape(url)
+        returned = self.scrape(url, params)        
         returned = json.loads(returned)
         
-        #print(json.dumps(returned, indent = "\t"))
+        #print(json.dumps(returned, indent = "  "))
         
         if returned["total"] == 0:
             return
         
         for res in returned["movies"]:
             
-            if strCmp(movie.title, res["title"]) < 0.95 or int(movie.year) != res["year"]:
+            if int(movie.year) != res["year"]:
+                continue #for performance reason double if
+            elif strCmp(movie.title, res["title"]) < 0.95 and  (movie.title.lower() not in res["title"].lower()):
                 continue
             
-            print("through")
-            
-            movie.id_RT = res["id"]
-                        
+            ### This is data, that is always overwrites data from other sources 
+            movie.id_RT = res["id"]         
             if "critics_score" in res["ratings"]:
-                movie.rt_critict = res["ratings"]["critics_score"]
+                movie.rt_critics = res["ratings"]["critics_score"]
             if "audience_score" in res["ratings"]:
                 movie.rt_audience = res["ratings"]["audience_score"]
             if "poster" in res:
                 if "original" in res["poster"]:
                     movie.linkPhoto = res["poster"]["original"]
-                       
+            if "abridged_cast" in res:
+                movie.actors = res["abridged_cast"]
+                for a in movie.actors:
+                    a.pop("characters", 0)
+                    
+            ### This checks for already avaliable data and does not overwrite           
             if movie.dateRelease == None and "theater" in res["release_dates"]:
-                movie.dateRelease = datetime.datetime.strptime(res["release_dates"]["theater"], "%Y-%m-%d")
-            
+                movie.dateRelease = datetime.strptime(res["release_dates"]["theater"], "%Y-%m-%d")
             if movie.runTime == -1 and "runtime" in res:
                 movie.runTime = res["runtime"]
-            
-            return       
+
+            return 
+        
+    def _queryRottenTomatoMovieFullCast(self, id_RT):
+        url = "http://api.rottentomatoes.com/api/public/v1.0/movies/%s/cast.json" % id_RT
+        params = {"apikey": APIKEY_RT}
+        
+        returned = self.scrape(url, params)
+        
+        if "cast" in returned:
+            toRet = json.loads(returned)["cast"]
+            for t in toRet:
+                t.pop("characters")
+            return toRet
+        else:
+            return []
     
-    def _queryYoutubeTrailerHelper(self, title, year, maxResoults = 5, official = True, HD = True):
+    def _queryYoutubeTrailerHelper(self, title, year, maxResoults = 3, official = True, HD = True):
         if official: 
             query = title + " official trailer" 
         else:
             query = title + " trailer"
         
-        url = "http://gdata.youtube.com/feeds/api/videos?v=2&q=" + query.replace(" ", "+") + "&max-results=" + str(maxResoults)
         if HD:
-            url += "&hd=true"
+            HD = "true"
+        else:
+            HD = ""
         
-        xml = self.scrape(url)
+        url = "http://gdata.youtube.com/feeds/api/videos"
+        params = {"v": 2, 
+                  "q": query,
+                  "max-results": maxResoults,
+                  "hd": HD}
+        
+        xml = self.scrape(url, params)
         xml = xml[xml.find(">")+1:] #removing first not well-formatted tag, leaving well formatted xml
         
         root = etree.fromstring(xml)
         
         entries = root.findall("{http://www.w3.org/2005/Atom}entry")
         
+
         ytmovies = []
         for entrie in entries:
             tmpMovie = {}
@@ -353,7 +346,7 @@ class Fetcher(threading.Thread):
             trailer = self._queryYoutubeTrailerHelper(movie.title, movie.year, HD = False)
         if not trailer:
             trailer = self._queryYoutubeTrailerHelper(movie.title, movie.year, official = False, HD = False)
-        movie.linkTrailer = trailer
+        movie.trailer = ("Y", trailer)
   
     def _queryTorrentzHelper(self, data, minSeeds = 3, noOfResoults = 5):
         '''
@@ -363,30 +356,26 @@ class Fetcher(threading.Thread):
         - "typ" (0,1)
         '''
         
-        url = "http://torrentz.eu/feed?q="
-        if "title" in data:
-            url = url + data["title"].replace(" ", "+") + "+"
-        if "year" in data:
-            url = url + str(data["year"]) + "+"
+        url = "http://torrentz.eu/feed"
+        movieStr = "%s %s" % (data["title"], data["year"])
             
         if data["typ"] == 0:
-            mIn, mAx = 600, 1500
+            mIn, mAx = 600, 1600
             toTry = ["dvdrip", "webrip"]
         elif data["typ"] == 1:
             mIn, mAx = 1000, 10000
             toTry = ["1080p", "brrip", "bdrip", "720p"]
         else:
-            raise
+            return
         
         releases = []
         
         for rls in toTry:
-            tmpUrl = url + rls
-            xml = self.scrape(tmpUrl)
+            params = {"q": "%s %s" % (movieStr, rls)}
+            xml = self.scrape(url, params)
             root = etree.fromstring(xml)[0]
             i = 0
             
-            print("searching:", tmpUrl)
             
             while len(releases) < noOfResoults and i < len(root):
                 if root[i].tag != "item":
@@ -413,7 +402,7 @@ class Fetcher(threading.Thread):
                             break
                         tmpRelease["title"] = child.text
                     elif child.tag == "pubDate":
-                        tmpRelease["releaseDate"] = datetime.datetime.strptime(child.text, "%a, %d %b %Y %H:%M:%S +0000")
+                        tmpRelease["releaseDate"] = datetime.strptime(child.text, "%a, %d %b %Y %H:%M:%S +0000")
                     
                 i = i + 1
                 if not bad:
@@ -543,8 +532,13 @@ class Fetcher(threading.Thread):
             url += "new"
         else:
             url += "expiring"
-        url += "?tv_filter=movies+only&min_rating=3.0&earliest_year=1950&?view=minimal"
-        html = self.scrape(url)
+            
+        params = {"tv_filter": "movies only",
+                  "min_rating": 3,
+                  "earliest_year": 1950,
+                  "view": "minimal"}
+        
+        html = self.scrape(url, params)
         soup = bs4.BeautifulSoup(html)
         
         for ul in soup.body.div.find_all("ul"):
@@ -558,14 +552,14 @@ class Fetcher(threading.Thread):
              
             if li.div["class"][0] == "title-group":
 
-                _date = datetime.datetime.strptime(li.div.text, "%b %d").date()
-                _date = _date.replace(datetime.date.today().year)
+                _date = datetime.strptime(li.div.text, "%b %d").date()
+                _date = _date.replace(date.today().year)
                 
                 # if new, date is before today, or else switch to previous year
-                if new and _date > datetime.date.today():
+                if new and _date > date.today():
                     _date = _date.replace(_date.year - 1)
                 #if expiring, date if after today, or else switch to next year
-                if not new and datetime.date.today() > _date:
+                if not new and date.today() > _date:
                     _date = _date.replace(_date.year + 1)
                 #last lines are probably buggy :)
             
@@ -594,7 +588,7 @@ class Fetcher(threading.Thread):
             
             releases[id_IMDB] = r
             i += 1
-            if i == 5:
+            if i == 20:
                 break
         
         return releases
@@ -605,20 +599,25 @@ class Fetcher(threading.Thread):
 
 if __name__ == "__main__":
     
-
     f = Fetcher()
-    ms = f.instaWatcherUpdate(new = False)
-    for k,v in ms.items():
-        m = Movie(id_IMDB = k)
-        f.queryOmdbApiFull(m)
-        f.queryRottenTomatoMovie(m)
-        f.queryTorrentz(m, 0)
-        print(m)
-        for r in m.releases:
-            print(r)
-        
-        input("stisn")
+    ms = f.queryRottenTomatoList("B")
+    M = []
+    fetchers = []
+    for m in ms:
+        fetchers.append(Fetcher())
+        fetchers[-1].q = "movieDetails"
+        fetchers[-1].m = m
+        fetchers[-1].start()
+        M.append(m)
     
+    allDead = False
+    while not allDead:
+        allDead = True
+        for f in fetchers:
+            if f.isAlive():
+                allDead = False            
+    
+    print("done!")    
     
     '''
     f = Fetcher()

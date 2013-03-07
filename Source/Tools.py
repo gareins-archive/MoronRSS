@@ -6,26 +6,32 @@ Created on Feb 15, 2013
 
 import json, re
 
-RELEASERS = "releasers.txt"
+########################
+###  Config Folders  ###
+########################
+_RELEASERS = "../config/releasers.json"
+TORRENT_WEBSITES = "../config/torrentSites.json"
+URLS_LOCK = "../config/urlsLock.json"
 
 def trailerCheck(str1, str2, year = ""):
     str1 = str1.lower().replace(" ", "")
-    str2 = str2.lower().replace(" ", "").replace("hq", "").replace("hd", "").replace(str(year), "")
+    str2 = str2.lower().replace(" ", "").replace("hq", "").replace("hd", "").replace(str(year), "").replace("original", "")
     
-    return strCmp(str1, str2)    
-
-#def releaseCheck(str1, str2, year):
+    cmp = strCmp(str1, str2) 
+    #print("cmp:", cmp, ": ", str2)
+    return cmp
 
 def strCmp(str1, str2):
-    dl = dameraulevenshtein(str1, str2)
+    dl = _dameraulevenshtein(str1, str2)
     siz = max(len(str1), len(str2))
     return 1-dl/siz
 
 def getReleaser(movieTitle, releaseName):
-        if not isAscii(releaseName):
+        ###add if movie title is non ascii exception
+        if not _isAscii(releaseName):
             return None
         
-        f = open(RELEASERS)
+        f = open(_RELEASERS)
         releasers = json.load(f)
         f.close()
         
@@ -51,10 +57,10 @@ def getReleaser(movieTitle, releaseName):
         
         return "UNKNOWN release: #%s#" % releaseName
 
-def isAscii(s):
+def _isAscii(s):
     return all(ord(c) < 128 for c in s)
 
-def dameraulevenshtein(seq1, seq2):
+def _dameraulevenshtein(seq1, seq2):
     '''
     Calculate the Damerau-Levenshtein distance between sequences.
     
@@ -102,3 +108,4 @@ def dameraulevenshtein(seq1, seq2):
                 and seq1[x-1] == seq2[y] and seq1[x] != seq2[y]):
                 thisrow[y] = min(thisrow[y], twoago[y - 2] + 1)
     return thisrow[len(seq2) - 1]
+    
