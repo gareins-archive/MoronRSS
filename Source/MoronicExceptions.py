@@ -1,5 +1,8 @@
 '''
-All the Exceptions that I cross overtime
+To do:
+- When it happens, log it
+- just... Something!
+
 
 @author: ozbolt
 '''
@@ -21,5 +24,3 @@ class ResourceEmpty(Exception):
         self.value = value
     def __str__(self):
         return repr(self.value)
-
-        

@@ -10,3 +10,14 @@ Dependencies:
 - freebase;	pip install freebase
 
 code explenation!
+country [name, ID, language]?
+genre [name, ID]?
+OfficialSite?
+OriginalTitle?
+language?
+
+Later:
+
+Subscirption, User classes
+mongoPy integration
+BottlePy

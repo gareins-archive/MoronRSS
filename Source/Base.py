@@ -1,7 +1,10 @@
 '''
-To do:
-- add Subtitles list to Movie and connect with Releases
+To do First::
 - Release method for adding torrentReleases
+
+To do after:
+- add Subtitles list to Movie and connect with Releases
+- Figure out where to put class comments
 
 @author: ozbolt
 '''
@@ -184,14 +187,4 @@ class Release(object):
             toRet += k +  " : " + v + "\n"
             
         return toRet
-        
-        
-    
-        
-
-
-if __name__ == "__main__":    
-    r = Release(1, "mja", "vceraj", {"bla": None})
-    print(r)
-    
     

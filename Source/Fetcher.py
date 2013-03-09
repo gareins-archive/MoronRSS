@@ -1,16 +1,17 @@
 #!/usr/bin/python3
 
 '''
-To Do:
+To Do First:
+- add real Update to RTs
 - Amazon prime update and search
 - LoveFilm update and search
-- Wrapper for new movies to automatically check LoveFilm, Netflix and Amazon
-- checkReleases wrapper for all releases
-- Pack all URLs in a constant?
-- add instawatcher blocker
+- new movies automatically check LoveFilm, Netflix and Amazon
+    - initialCheckReleases wrapper for ALL releases
+
+To Do After:
 - bs4 attr!! clean previous!
-- add real Update to RTs
-- check if release allready in
+- add instawatcher blocker
+- Pack all URLs in a constant?
 
 @author: ozbolt
 '''
@@ -672,12 +673,4 @@ if __name__ == "__main__":
 
     for m in M:
         print(m)
-    '''
-    '''
-    f = Fetcher()
-    m = Movie(title = "Bully", year = 2012)
-    f.fetchMovieDetails(m)
-    f.fetchRottenTomatoTrailer(m)
-    f.queryYoutubeTrailer(m)
-    print(m)
     '''

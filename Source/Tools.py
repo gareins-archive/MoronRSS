@@ -20,8 +20,7 @@ def trailerCheck(str1, str2, year = ""):
     str1 = str1.lower().replace(" ", "")
     str2 = str2.lower().replace(" ", "").replace("hq", "").replace("hd", "").replace(str(year), "").replace("original", "")
     
-    cmp = strCmp(str1, str2) 
-    #print("cmp:", cmp, ": ", str2)
+    cmp = strCmp(str1, str2)
     return cmp
 
 def strCmp(str1, str2, lower = False):
@@ -60,7 +59,6 @@ def checkLock_andLock(netloc, check = True):
 def lockUrl(netloc):
     checkLock_andLock(netloc, check = False)
     
-
 def getReleaser(movieTitle, releaseName):
         ###add if movie title is non ascii exception
         if not _isAscii(releaseName):
@@ -98,27 +96,6 @@ def _isAscii(s):
 def _dameraulevenshtein(seq1, seq2):
     '''
     Calculate the Damerau-Levenshtein distance between sequences.
-    
-    This distance is the number of additions, deletions, substitutions,
-    and transpositions needed to transform the first sequence into the
-    second. Although generally used with strings, any sequences of
-    comparable objects will work.
-    
-    Transpositions are exchanges of *consecutive* characters; all other
-    operations are self-explanatory.
-    
-    This implementation is O(N*M) time and O(M) space, for N and M the
-    lengths of the two sequences.
-    
-    >>> dameraulevenshtein('ba', 'abc')
-    2
-    >>> dameraulevenshtein('fee', 'deed')
-    2
-    
-    It works with arbitrary sequences too:
-    >>> dameraulevenshtein('abcd', ['b', 'a', 'c', 'd', 'e'])
-    2
-    
     Got it from: http://code.activestate.com/recipes/576874-levenshtein-distance/
     Licensed under: MIT opensource license
     '''
