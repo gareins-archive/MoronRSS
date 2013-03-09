@@ -1,10 +1,13 @@
 '''
-Created on Feb 15, 2013
+To do:
+- genres
+- MONGO PY!!!
 
 @author: ozbolt
 '''
 
 import json, re
+from time import sleep
 
 ########################
 ###  Config Folders  ###
@@ -21,10 +24,42 @@ def trailerCheck(str1, str2, year = ""):
     #print("cmp:", cmp, ": ", str2)
     return cmp
 
-def strCmp(str1, str2):
+def strCmp(str1, str2, lower = False):
+    if lower:
+        str1 = str1.lower()
+        str2 = str2.lower()
     dl = _dameraulevenshtein(str1, str2)
     siz = max(len(str1), len(str2))
     return 1-dl/siz
+
+def checkLock_andLock(netloc, check = True):
+    
+    while True:
+        try: #if 2 reads at once
+            f = open(URLS_LOCK, "r")
+            locks = json.load(f)
+            f.close()
+            break
+        except:
+            sleep(0.01)
+    
+    
+    if (netloc in locks) and (check == True):
+        lock = locks[netloc]
+    else:
+        lock = False
+        
+    if not lock:
+        f = open(URLS_LOCK, "w")
+        locks[netloc] = True
+        json.dump(locks, f)
+        f.close()
+    
+    return lock
+
+def lockUrl(netloc):
+    checkLock_andLock(netloc, check = False)
+    
 
 def getReleaser(movieTitle, releaseName):
         ###add if movie title is non ascii exception

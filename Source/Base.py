@@ -1,5 +1,7 @@
 '''
-Created on Feb 13, 2013
+To do:
+- add Subtitles list to Movie and connect with Releases
+- Release method for adding torrentReleases
 
 @author: ozbolt
 '''
@@ -47,7 +49,7 @@ class Movie(object):
     releasedAmazon   boolean
     releaseAmazon    Release
     
-    trailer          String
+    trailers         String
     *linkPhoto       String
     linkSite         String
     
@@ -100,7 +102,7 @@ class Movie(object):
         toRet = dict( (v, getattr(self, v)) for v in variables)
         if not additional:
             return toRet
-        optVars = ["originalTitle", "id_RT", "id_FB", "id_Netflix", "id_Amazon", "rt_critics", "rt_audience", "releasedHD", "releasedSQ", "releases", "releasedNetflix", "releasedAmazon", "releaseNetflix", "releaseNetflix", "trailer", "linkSite"]
+        optVars = ["originalTitle", "id_RT", "id_FB", "id_Netflix", "id_Amazon", "rt_critics", "rt_audience", "releasedHD", "releasedSQ", "releases", "releasedNetflix", "releasedAmazon", "releaseNetflix", "releaseNetflix", "trailers", "linkSite"]
         for v in optVars:
             try:
                 toRet[v] = getattr(self, v)
@@ -108,6 +110,23 @@ class Movie(object):
                 pass
         
         return toRet
+    
+    def addTrailers(self, ts):
+        if not ts:
+            return
+        
+        for t in ts[0:-1]:
+            self.addTrailer(t, sort=False)
+        self.addTrailer(ts[-1])
+    
+    def addTrailer(self, t, sort = True):
+        try:
+            self.trailers.append(t)
+        except:
+            self.trailers = [t]
+      
+        if sort:
+            self.trailers = sorted(self.trailers, key=lambda x: x["score"], reverse = True)
         
     def __str__(self):
         toRet = ""
@@ -117,7 +136,7 @@ class Movie(object):
             toRet += k +  " : " + v + "\n"
         return toRet
     
-class Release:
+class Release(object):
     '''
     ### Data ###
     AttributeName    AttTyp 
@@ -126,51 +145,49 @@ class Release:
     link            String
     releaseDate     Date
     data            {k:v}
-       
     
     type:
-        1 - SQ [500MB < rip < 1.5GB]
-        2 - HD [1080p] [2.GB < rip < 10GB]
-        3 - netflix
-        4 - amazon
+        1 - SQ [500MB < rip < 1.6GB]
+        2 - HD [1080p] [1GB < rip < 10GB]
+        3 - Netflix
+        4 - Amazon
+        5 - LoveFilm
     
-    data
+    data depends on release type.
         type{1,2}: 
-         - size    int
-         - seeds    int
-         - peers    int
-         - rls     String
-         - hash    torrentzHash
-        type{3}:
-         - HD    True/False
+         - size      int
+         - seeds     int
+         - peers     int
+         - rls       String
+         - hash      torrentzHash
+        type{3, 5}:
+         - HD        True/False
+         - iw_ID     int #instawatcherID
+         - expiresDate
         type{4}:
-         - avaliable  1(Prime), 2(Rent), 3(Buy)
-         - price      int
-        
-
-    #Functions 
-    
+         - avaliable 1(Prime), 2(Rent), 3(Buy)
+         - price     int
     '''
 
-    def __init__(self, typ, link = "", releaseDate = None, data = {}):
+    def __init__(self, typ, link, releaseDate):
         self.typ = typ
-        self.releaseDate = releaseDate
-        self.data = data
         self.link = link
+        self.releaseDate = releaseDate
         
     def __str__(self):
-        variables = ["typ", "link", "releaseDate"]
+        variables = ["typ", "releaseDate", "link", "data"]
         dIct = dict( (v, getattr(self, v)) for v in variables)
         
         toRet = ""
         for k,v in dIct.items():
             v = str(v)
             toRet += k +  " : " + v + "\n"
-        for k,v in self.data.items():
-            toRet += "  " + k + " : " + str(v) + "\n"
             
         return toRet
-
+        
+        
+    
+        
 
 
 if __name__ == "__main__":    

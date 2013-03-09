@@ -1,19 +1,27 @@
 #!/usr/bin/python3
 
 '''
-Created on Feb 13, 2013
+To Do:
+- Amazon prime update and search
+- LoveFilm update and search
+- Wrapper for new movies to automatically check LoveFilm, Netflix and Amazon
+- checkReleases wrapper for all releases
+- Pack all URLs in a constant?
+- add instawatcher blocker
+- bs4 attr!! clean previous!
+- add real Update to RTs
+- check if release allready in
 
 @author: ozbolt
 '''
 
 from Base import Movie, Release
 from Tools import *
-import MoronicExceptions
+from MoronicExceptions import *
 from Keys import APIKEY_RT
 
 from urllib.parse import urlparse
-from datetime import datetime, date
-from time import sleep
+from datetime import datetime, date, timedelta
 import sys
 import threading
 
@@ -32,7 +40,8 @@ class Fetcher(threading.Thread):
         if self.q == "movieDetails":
             self.queryMovieDetails(self.m)
         elif self.q == "movieUpdate":
-            self.queryOmdbApiQuickUpdate(self.m)
+            self.queryOmdbApiUpdate(self.m)
+            self.queryRottenTomatoMovie(self.m)
         elif self.q == "upcoming":
             return self.queryRottenTomatoList("U")
         elif self.q == "boxOffice":
@@ -41,8 +50,8 @@ class Fetcher(threading.Thread):
             return self.queryRottenTomatoList("D")
         elif self.q == "trailer":
             self.queryYoutubeTrailer(self.m)
-        elif self.q== "dvdrip":
-            self.queryTorrentz(self.m)
+        elif self.q == "netflix":
+            return self.queryInstaWatcher(self.m)
             
     def scrape(self, url, params = {}):
         
@@ -50,35 +59,24 @@ class Fetcher(threading.Thread):
         while True:
             netloc = urlparse(url).netloc
             
-            f = open(URLS_LOCK, "r")
-            try: #if 2 reads at once
-                locks = json.load(f)
-            except:
-                sleep(0.01)
-                continue
-            f.close()
-            
-            if netloc in locks:
-                lock = locks[netloc]
-            else:
-                lock = False
-                
+            lock = checkLock_andLock(netloc)                
             if not lock:
-                f = open(URLS_LOCK, "w")
-                locks[netloc] = True
-                json.dump(locks, f)
-                f.close()
                 break
             elif i < 10:
                 sleep(1)
                 i = i + 1
+            elif i == 10:
+                #force unlocking resource??
+                #10 seconds enough
+                lockUrl(netloc)
+                break
             else:
-                raise MoronicExceptions.ResourceBusy(netloc)
+                raise ResourceBusy(netloc)
         
         try:
             r = requests.get(url, params=params)
             html = r.text
-            print("scraped:", netloc)
+            print("scraped:", r.url)
             sys.stdout.flush()
             
             f = open(URLS_LOCK, "r")
@@ -91,8 +89,12 @@ class Fetcher(threading.Thread):
             return html
             
         except requests.exceptions.ConnectionError:
-            raise MoronicExceptions.ResourceUnavaliable(netloc)
-            
+            raise ResourceUnavaliable(netloc)
+        
+    def fetchMovieUpdate(self, movie):
+        self.fetchOmdbApiUpdate(movie)
+        self.fetchRottenTomatoUpdate(movie)    
+        
     def _queryOmdbApiHelper(self, title = "", id_IMDB = -1, year = -1):
         url = "http://www.omdbapi.com"
         params = {"plot": "full"}
@@ -106,48 +108,30 @@ class Fetcher(threading.Thread):
             params["t"] = title
         
         jsonData = self.scrape(url, params)
-        data = json.loads(jsonData)
+        data = json.loads(jsonData)        
                 
         if data["Response"] == "False":
-            raise MoronicExceptions.ResourceUnavaliable("www.omdbapi.com")
+            raise ResourceEmpty("www.omdbapi.com")
         return data
-    
-    def queryMovieDetails(self, movie):
-        a = self.queryOmdbApiFull(movie)
-        self.queryRottenTomatoMovieFull(movie)
-        if a == "NF":
-            self.queryOmdbApiFull(movie)
-    
-    def queryOmdbApiFull(self, movie):
+     
+    def _omdbApiHelper(self, movie, update = False):
         
         if movie.id_IMDB != -1:
             data = self._queryOmdbApiHelper(id_IMDB = movie.id_IMDB)
         else:
             data = self._queryOmdbApiHelper(title = movie.title, year = movie.year)
-               
-        if "Title" in data:
+        
+        movieDict = movie.constructDict()        
+        
+        #if (data contains what i want) and (if i am updating, some data if already in should not be changed)
+        
+        if ("Title" in data) and not (update and ("title" in movieDict)):
             movie.title = data["Title"]
-        if "Year" in data:
+        if "Year" in data and not (update and ("year" in movieDict)) :
             movie.year = data["Year"]
-        if data["imdbRating"] != "N/A":
-            movie.IMDB_rating = float(data["imdbRating"])
-        if data["imdbVotes"] != "N/A":
-            movie.IMDB_votes = int(data["imdbVotes"].replace(",", ""))
-        if "imdbID" in data:
+        if "imdbID" in data and not (update and ("title" in movieDict)):
             movie.id_IMDB = int(data["imdbID"][2:])
-        if "Director" in data:
-            movie.director = data["Director"]
-        if "Actors" in data:
-            movie.actors = data["Actors"].split(", ")
-        if "Genre" in data:
-            movie.genres = data["Genre"].split(", ")
-        if "Plot" in data:
-            movie.plot = data["Plot"]
-        if "Released" in data:
-            movie.dateRelease = datetime.strptime(data["Released"], "%d %b %Y" )
-        if movie.linkPhoto == "" and data["Poster"] != "N/A":
-            movie.linkPhoto = data["Poster"]
-        if data["Runtime"] != "N/A":
+        if data["Runtime"] != "N/A" and not (update and ("runTime" in movieDict)):
             runtime = data["Runtime"].split(" ")
             if "h" in runtime:
                 h = int(runtime[0])
@@ -158,29 +142,65 @@ class Fetcher(threading.Thread):
                 h = 0
                 m = int(runtime[0])
             movie.runTime = h*60 + m
+        
+        if data["imdbRating"] != "N/A":
+            movie.IMDB_rating = float(data["imdbRating"])
+        if data["imdbVotes"] != "N/A":
+            movie.IMDB_votes = int(data["imdbVotes"].replace(",", ""))
+        if "Director" in data:
+            movie.director = data["Director"]
+        if "Actors" in data:
+            movie.actors = data["Actors"].split(", ")
+        if "Genre" in data:
+            movie.genres = data["Genre"].split(", ")
+        if "Plot" in data:
+            movie.plot = data["Plot"]
+        if  data["Released"] != "N/A":
+            dajt = datetime.strptime(data["Released"], "%d %b %Y" )
+            movie.dateRelease = date(dajt.year, dajt.month, dajt.day)
+        if movie.linkPhoto == "" and data["Poster"] != "N/A":
+            movie.linkPhoto = data["Poster"]
+        
+    def fetchOmdbApiUpdate(self, movie):
+        self._omdbApiHelper(movie, update = True)
     
-    def queryOmdbApiQuickUpdate(self, movie):
-        '''
-        Updating:
-        - imdbRating
-        - imdbVotes
-        '''
+    def queryOmdbApiFull(self, movie):
+        self._omdbApiHelper(movie)
+    
+    def fetchOmdbApiFull(self, movie):
+        self._omdbApiHelper(movie)
         
-        newData = self._queryOmdbApiHelper(id_IMDB = movie.id_IMDB)
-        
-        try:
-            rating = newData["imdbRating"]
-            votes = newData["imdbVotes"].replace(",", "")
-            if rating == "N/A":
-                rating = "0"
-            if votes == "N/A":
-                votes = "0"
-                        
-            movie.IMDB_rating = float(rating)
-            movie.IMDB_votes = int(votes)
-        except:
-            print("Update data not avaliable")
-        
+    def _rottenTomatoeHelper(self, scraped, movie, update = False):
+        ### This is data, that is always overwrites data from other sources 
+        movie.id_RT = int(scraped["id"])         
+        if "critics_score" in scraped["ratings"]:
+            movie.rt_critics = scraped["ratings"]["critics_score"]
+        if "audience_score" in scraped["ratings"]:
+            movie.rt_audience = scraped["ratings"]["audience_score"]
+        if "synopsis" in scraped:
+            if len(scraped["synopsis"]) > 20:
+                movie.plot = scraped["synopsis"]
+        if "posters" in scraped:
+            if "original" in scraped["posters"]:
+                movie.linkPhoto = scraped["posters"]["original"]
+        if "abridged_cast" in scraped:
+            movie.actors = scraped["abridged_cast"]
+            for a in movie.actors:
+                a.pop("characters", 0)
+        ###only in full update...
+        if "abridged_directors" in scraped:
+            movie.directors = []
+            for director in scraped["abridged_directors"]:
+                movie.directors.append(director["name"])
+        if "genres" in scraped:
+            movie.genres = scraped["genres"]
+
+        ### This checks for already avaliable data and does not overwrite           
+        if movie.dateRelease == None and "theater" in ["release_dates"]:
+            movie.dateRelease = datetime.strptime(["release_dates"]["theater"], "%Y-%m-%d")
+        if movie.runTime == -1 and "runtime" in scraped:
+            movie.runTime = scraped["runtime"]
+    
     def queryRottenTomatoList(self, listType, resoultLen = 20):
         
         url = "http://api.rottentomatoes.com/api/public/v1.0/lists"
@@ -202,33 +222,27 @@ class Fetcher(threading.Thread):
         
         movies = []
         i = 1
-        for movie in data["movies"]:
+        for res in data["movies"]:
             try:
-                movie["alternate_ids"]["imdb"]
+                res["alternate_ids"]["imdb"]
             except:
                 continue
             m = Movie()
-            m.id_IMDB = int(movie["alternate_ids"]["imdb"])
-            #m.plot = movie["synopsis"]
-            m.title = movie["title"]
-            m.year = movie["year"]
-            #if "theater" in movie["release_dates"]:
-            #    m.dateRelease = datetime.strptime(movie["release_dates"]["theater"], "%Y-%m-%d")
-            #m.linkPhoto = movie["posters"]["original"]
-            #m.runTime = movie["runtime"]
-            m.id_RT = movie["id"]
+            m.id_IMDB = int(res["alternate_ids"]["imdb"])
+            m.title = res["title"]
+            m.year = res["year"]
+            m.id_RT = int(res["id"])
+            self._rottenTomatoeHelper(res, m)
+            
             if listType == "D":
                 m.boxOffice = i
                 i = i+1
                         
             movies.append(m)
-
-        #for m in movies:
-            #print(m)
             
         return movies
     
-    def queryRottenTomatoMovieFull(self, movie):
+    def queryRottenTomatoMovie(self, movie):
         url = "http://api.rottentomatoes.com/api/public/v1.0/movies.json?"
         params = {"q": movie.title + " %s" % movie.year,
                   "page_limit": 3,
@@ -246,52 +260,41 @@ class Fetcher(threading.Thread):
             
             if int(movie.year) != res["year"]:
                 continue #for performance reason double if
-            elif strCmp(movie.title, res["title"]) < 0.95 and  (movie.title.lower() not in res["title"].lower()):
+            elif strCmp(movie.title, res["title"]) < 0.95 and (movie.title.lower() not in res["title"].lower()):
                 continue
+            self._rottenTomatoeHelper(res, movie)
             
-            ### This is data, that is always overwrites data from other sources 
-            movie.id_RT = res["id"]         
-            if "critics_score" in res["ratings"]:
-                movie.rt_critics = res["ratings"]["critics_score"]
-            if "audience_score" in res["ratings"]:
-                movie.rt_audience = res["ratings"]["audience_score"]
-            if "poster" in res:
-                if "original" in res["poster"]:
-                    movie.linkPhoto = res["poster"]["original"]
-            if "abridged_cast" in res:
-                movie.actors = res["abridged_cast"]
-                for a in movie.actors:
-                    a.pop("characters", 0)
-                    
-            ### This checks for already avaliable data and does not overwrite           
-            if movie.dateRelease == None and "theater" in res["release_dates"]:
-                movie.dateRelease = datetime.strptime(res["release_dates"]["theater"], "%Y-%m-%d")
-            if movie.runTime == -1 and "runtime" in res:
-                movie.runTime = res["runtime"]
-
             return 
+
+    def fetchRottenTomatoUpdate(self, movie):
         
-    def _queryRottenTomatoMovieFullCast(self, id_RT):
-        url = "http://api.rottentomatoes.com/api/public/v1.0/movies/%s/cast.json" % id_RT
-        params = {"apikey": APIKEY_RT}
+        url = "http://api.rottentomatoes.com/api/public/v1.0/movies/%d.json" % movie.id_RT
+        params = {"apikey": "zj3y2qsm6q2t5pef2spv7bnd"}
+        resp = self.scrape(url, params)
+        data = json.loads(resp)
         
-        returned = self.scrape(url, params)
+        movie.rt_critics = data["ratings"]["critics_score"]
+        movie.rt_audience = data["ratings"]["audience_score"]
+     
+    def fetchRottenTomatoTrailer(self, movie):
+        url = "http://api.rottentomatoes.com/api/public/v1.0/movies/%d/clips.json?" % movie.id_RT 
+        params = {"apikey": "zj3y2qsm6q2t5pef2spv7bnd"}
+        resp = self.scrape(url, params)
+        data = json.loads(resp)
         
-        if "cast" in returned:
-            toRet = json.loads(returned)["cast"]
-            for t in toRet:
-                t.pop("characters")
-            return toRet
-        else:
-            return []
-    
+        if data["clips"]:
+            movie.addTrailer({"type": "RT", "link": data["clips"][0]["links"]["alternate"][32:], "score": 0.8})
+        
     def _queryYoutubeTrailerHelper(self, title, year, maxResoults = 3, official = True, HD = True):
+        deficit = 0
         if official: 
             query = title + " official trailer" 
+            deficit += 2
         else:
             query = title + " trailer"
         
         if HD:
+            deficit += 2
             HD = "true"
         else:
             HD = ""
@@ -305,17 +308,17 @@ class Fetcher(threading.Thread):
         xml = self.scrape(url, params)
         xml = xml[xml.find(">")+1:] #removing first not well-formatted tag, leaving well formatted xml
         
-        root = etree.fromstring(xml)
-        
+        root = etree.fromstring(xml)        
         entries = root.findall("{http://www.w3.org/2005/Atom}entry")
-        
 
-        ytmovies = []
+        trailers = []
+        resultNum = 0
         for entrie in entries:
-            tmpMovie = {}
+            tmpTrailer = {"type": "YT"}
             tmpT = entrie.find("{http://www.w3.org/2005/Atom}title").text
-            tmpMovie["cmp"] = trailerCheck(query, tmpT, year)
-            if tmpMovie["cmp"] < 0.4:
+            tmpTrailer["score"] = round(trailerCheck(query, tmpT, year) * 10/(10+resultNum+deficit), 3)
+            resultNum += 1
+            if tmpTrailer["score"] < 0.4:
                 continue
             group = entrie.find("{http://search.yahoo.com/mrss/}group")
             try:
@@ -324,36 +327,32 @@ class Fetcher(threading.Thread):
                     continue
             except:
                 pass
-            tmpMovie["id"] = group.find("{http://gdata.youtube.com/schemas/2007}videoid").text
-            ytmovies.append(tmpMovie)
-
+            tmpTrailer["link"] = group.find("{http://gdata.youtube.com/schemas/2007}videoid").text
+            trailers.append(tmpTrailer)
         
-        if ytmovies == []:
-            return None
-        
-        mov = 0
-        for i in range(len(ytmovies)):
-            if i==0:
-                continue
-            if ytmovies[i]["cmp"] > ytmovies[mov]["cmp"] + 0.05:
-                mov = i
-        
-        return ytmovies[mov]["id"]
+        return trailers
     
     def queryYoutubeTrailer(self, movie):
-        trailer = self._queryYoutubeTrailerHelper(movie.title, movie.year)
-        if not trailer:
-            trailer = self._queryYoutubeTrailerHelper(movie.title, movie.year, HD = False)
-        if not trailer:
-            trailer = self._queryYoutubeTrailerHelper(movie.title, movie.year, official = False, HD = False)
-        movie.trailer = ("Y", trailer)
+        trailers = self._queryYoutubeTrailerHelper(movie.title, movie.year)
+        if not trailers:
+            trailers = self._queryYoutubeTrailerHelper(movie.title, movie.year, HD = False)
+        if not trailers:
+            trailers = self._queryYoutubeTrailerHelper(movie.title, movie.year, official = False, HD = False)
+        movie.addTrailers(trailers)
   
-    def _queryTorrentzHelper(self, data, minSeeds = 3, noOfResoults = 5):
+    def fetchTorrentReleases(self, movie):
+        releases = self.queryTorrentz(movie, 0)
+        releases.extend(self.queryTorrentz(movie, 1)) 
+        #Release method to add a new release
+        #if 2 the same -> typ 0 is deleted        
+      
+    def _queryTorrentzHelper(self, data, minSeeds = 3, maxReleases = 10):
         '''
         In data:
         - "title"
         - "year"
         - "typ" (0,1)
+        !!MAke better syntax of bs4!!!
         '''
         
         url = "http://torrentz.eu/feed"
@@ -373,19 +372,18 @@ class Fetcher(threading.Thread):
         for rls in toTry:
             params = {"q": "%s %s" % (movieStr, rls)}
             xml = self.scrape(url, params)
-            root = etree.fromstring(xml)[0]
-            i = 0
+            root = etree.fromstring(xml)[0]            
             
-            
-            while len(releases) < noOfResoults and i < len(root):
-                if root[i].tag != "item":
-                    i = i + 1
+            for r in root:
+                if len(releases) > maxReleases:
+                    break
+                if r.tag != "item":
                     continue
                 
                 tmpRelease = {}
                 bad = False
                 
-                for child in root[i]:
+                for child in r:
                     if child.tag == "description":
                         description = re.split('[a-z]+: ', child.text, flags=re.IGNORECASE)
                         tmpRelease["seeds"] = int(description[2].replace(",", ""))
@@ -396,32 +394,33 @@ class Fetcher(threading.Thread):
                         else:
                             tmpRelease["peers"] = int(description[3].replace(",", ""))
                             tmpRelease["hash"] = description[4]
+                            for f in releases:
+                                if tmpRelease["hash"] == f["hash"]:
+                                    bad = True
+                                    break
                     elif child.tag == "title":
                         if " TS " in child.text:
                             bad = True
                             break
                         tmpRelease["title"] = child.text
                     elif child.tag == "pubDate":
-                        tmpRelease["releaseDate"] = datetime.strptime(child.text, "%a, %d %b %Y %H:%M:%S +0000")
-                    
-                i = i + 1
+                        tmpDate = datetime.strptime(child.text, "%a, %d %b %Y %H:%M:%S +0000")
+                        tmpRelease["releaseDate"] = date(tmpDate.year, tmpDate.month, tmpDate.day)
+                
                 if not bad:
                     releases.append(tmpRelease)
-                    
-            if releases != []:
-                return releases
-            
-        return []
+        
+        return releases
     
     def queryTorrentz(self, movie, typ):
         
         ###typ = (0,1) - (SQ, HD)
         
         data = {"title": movie.title, "year": movie.year, "typ": typ}
-        data = self._queryTorrentzHelper(data)       
+        data = self._queryTorrentzHelper(data) 
+        releases = []      
         
         if data == []:
-            print("torrentz data empty")
             return
         for d in data:            
             rls = getReleaser(movie.title, d["title"])
@@ -429,7 +428,6 @@ class Fetcher(threading.Thread):
                 continue
             else:
                 r = Release(typ, self._fetchMagnetFromHash(d["hash"]), d["releaseDate"])
-                #r = Release(typ, None, d["releaseDate"])
                 tmpData = {}
                 tmpData["size"] = d["size"]
                 tmpData["seeds"] = d["seeds"]
@@ -437,7 +435,9 @@ class Fetcher(threading.Thread):
                 tmpData["hash"] = d["hash"]
                 tmpData["rls"] = rls
                 r.data = tmpData
-            movie.releases.append(r)
+            releases.append(r)
+        
+        return releases
     
     def updateTorrentz(self, movie):
         for i in range(len(movie.releases)):
@@ -520,7 +520,44 @@ class Fetcher(threading.Thread):
         except:
             pass
         
-    def instaWatcherUpdate(self, lastCheck = 0, new = True, all = False):
+    def _fetchInstaWatcherDates(self, release):
+        url = "http://instantwatcher.com/titles/%s" % release.data["iw_ID"]
+        html = self.scrape(url)
+        
+        ul = bs4.BeautifulSoup(html).find("ul", {"class": "titleInfo"})
+        dates = []
+        for li in ul.find_all("li"):
+            if "Available" in li.span.text:
+                string = li.find("span", {"class": "infodata"}).text
+                i = re.search("[A-Z]", string).start(0)
+                tmpDate = datetime.strptime(string[i:], "%b %d, %Y ")
+                dates.append(date(tmpDate.year, tmpDate.month, tmpDate.day))
+        
+        release.releaseDate = dates[0] 
+        release.data["expiresDate"] = dates[1]    
+    
+    def _decodeInstaWatcherTitleListing(self, li):
+        
+        linkEnc = li.find("span", {"class": "play-queue"}).a["onclick"]
+        i1 = linkEnc.find(",", 24)
+        i2 = linkEnc.find("?movieid=", i1) + 9
+        i3 = linkEnc.find("'", i2)
+        
+        link = int(linkEnc[i2:i3])
+        r = Release(3, link, None)
+        
+        iw_ID = int(linkEnc[24:i1])
+        r.data = {"iw_ID": int(iw_ID)}
+        
+        if li.find("span", {"class": "hd"}):
+            r.data["hd"] = True
+        else:
+            r.data["hd"] = False
+        
+        self._fetchInstaWatcherDates(r)
+        return r
+        
+    def queryInstaWatcherList(self, days = 3, new = True):#, all = False):
         
         '''
         if not 4 < now.hour - 6 < 8:
@@ -534,64 +571,73 @@ class Fetcher(threading.Thread):
             url += "expiring"
             
         params = {"tv_filter": "movies only",
-                  "min_rating": 3,
+                  "min_rating": 2,
                   "earliest_year": 1950,
                   "view": "minimal"}
         
         html = self.scrape(url, params)
         soup = bs4.BeautifulSoup(html)
+        titles = soup.body.div.find("ul", {"id": "title-listing"})
         
-        for ul in soup.body.div.find_all("ul"):
-            if ul.has_key("id"):
-                if ul["id"] == "title-listing":
-                    titles = ul
+        movies = []
+        today = date.today()
         
-        releases = {}
-        i = 0
-        for li in titles.find_all("li"):
-             
-            if li.div["class"][0] == "title-group":
-
-                _date = datetime.strptime(li.div.text, "%b %d").date()
-                _date = _date.replace(date.today().year)
-                
-                # if new, date is before today, or else switch to previous year
-                if new and _date > date.today():
-                    _date = _date.replace(_date.year - 1)
-                #if expiring, date if after today, or else switch to next year
-                if not new and date.today() > _date:
-                    _date = _date.replace(_date.year + 1)
-                #last lines are probably buggy :)
-            
-            
+        for li in titles.find_all("li"): 
             try:
-                title = li.a.text
-                year = li.span.text
-                data = self._queryOmdbApiHelper(title = title, year = year)
-                id_IMDB = int(data["imdbID"][2:])
-            except:
+                m = Movie(title = li.a.text, year = li.find("span", {"class": "releaseYear"}).text)
+                self.fetchMovieDetails(m)
+                if m.id_IMDB < 2:
+                    continue
+            except ResourceEmpty:
                 continue
             
-            r = Release(3, releaseDate = _date)
+            rls = self._decodeInstaWatcherTitleListing(li)
+            if new:
+                dateToWatch = rls.releaseDate
+            else:
+                dateToWatch = rls.data["expiresDate"]
             
-            txt = str(li)
-            index1 = txt.find("WiPlayer?movieid=") + 17
-            index2 = txt[index1:].find("\'")
-            
-            r.link = int(txt[index1:index1 + index2])  
-            
-            HD = False
-            if txt.find("class=\"hd\"") != -1:
-                HD = True
-            
-            r.data["HD"] = HD
-            
-            releases[id_IMDB] = r
-            i += 1
-            if i == 20:
+            if abs(today-dateToWatch) > timedelta(days = days):
                 break
+            
+            m.releases.append(rls)
+            movies.append(m)
         
-        return releases
+        return movies
+        
+    def queryInstaWatcher(self, movie):    
+        url = "http://instantwatcher.com/titles"
+        params = {"q": "%s %d" % (movie.title, movie.year),
+                  "view": "minimal"}
+        
+        html = self.scrape(url, params)
+        #lazy!, slow?:
+        ul = bs4.BeautifulSoup(html).find_all("li", {"class": "title-list-item "})
+        
+        for li in ul:
+            title = li.a.text            
+            year = int(li.find("span", {"class": "releaseYear"}).text)
+            if strCmp(title, movie.title, lower = True) < 0.95 or year != movie.year:
+                continue
+            linkEnc = li.find("span", {"class": "play-queue"}).a["onclick"]
+            i1 = linkEnc.find(",", 24)
+            i2 = linkEnc.find("?movieid=", i1) + 9
+            i3 = linkEnc.find("'", i2)
+            
+            link = int(linkEnc[i2:i3])
+            r = Release(3, link, None)
+            
+            iw_ID = int(linkEnc[24:i1])
+            r.data = {"iw_ID": int(iw_ID)}
+            
+            if li.find("span", {"class": "hd"}):
+                r.data["hd"] = True
+            else:
+                r.data["hd"] = False
+            
+            self._fetchInstaWatcherDates(r)
+            movie.releases.append(r)
+            return
         
     def queryAmazon(self, movie):
         return 0
@@ -599,16 +645,20 @@ class Fetcher(threading.Thread):
 
 if __name__ == "__main__":
     
+    
     f = Fetcher()
-    ms = f.queryRottenTomatoList("B")
-    M = []
-    fetchers = []
-    for m in ms:
+    M = f.queryInstaWatcherList()
+    for m in M:
+        print(m)
+    '''
+    for iwli in iwl:
         fetchers.append(Fetcher())
         fetchers[-1].q = "movieDetails"
+        m = Movie(id_IMDB = iD)
+        M.append(m)
         fetchers[-1].m = m
         fetchers[-1].start()
-        M.append(m)
+        
     
     allDead = False
     while not allDead:
@@ -617,69 +667,17 @@ if __name__ == "__main__":
             if f.isAlive():
                 allDead = False            
     
-    print("done!")    
+    print("done!")
     
+
+    for m in M:
+        print(m)
+    '''
     '''
     f = Fetcher()
-    f._fetchMagnetFromHash("188aa63c64e1d6b64b74f5be36cb9244c08a3456")
-    m = Movie()
-    m.title = "The Godfather"
-    m.year = 1974
-    ret = f.queryTorrentz(m, 0) 
-    
-    for r in m.releases:
-        print(r)
+    m = Movie(title = "Bully", year = 2012)
+    f.fetchMovieDetails(m)
+    f.fetchRottenTomatoTrailer(m)
+    f.queryYoutubeTrailer(m)
+    print(m)
     '''
-    
-    
-    
-    '''
-    ret = f._queryTorrentzHelper({"title": "wreck it ralph"})
-    for r in ret:
-        tajm = r["releaseDate"]
-    
-
-    hshs = ["188aa63c64e1d6b64b74f5be36cb9244c08a3456", 
-            "188aa63c64e1d6b64b74f5be36cb9244c08a3456", 
-            "83093cf4fb27e4874d14f60d483aef3c7959e0a0", 
-            "24a090e2e44aeaca73c81aabc97eaf9c7c20af24", 
-            "e4419bbaafb2326b613d145aaa2342957c578d8c", 
-            "6d7882c59d6555283745f31e0492ac8d041132a1", 
-            "a8e59139ddd8ab84c4d46104f0a6a7432c6530ca", 
-            "e39b837c003fa6e23aaf18fe4a02541ce19445c9", 
-            "0e7cb7bf1f3b855a1f653c98a8ab1e95f9aa089a",
-            "fd3bc2ee4e11773186db9758b14b1c17f1acbed5",
-            "c0b85bde9dde3b56c78ff29f00bae24b1493abce",
-            "ce1fc50bffb09962be8f3c49478cbeb65e2afe0f",
-            "a0c2982e0b45552cd46284db6563a1a2112bce67",
-            "3c64a0ddf992e106abf2af938bceb76488d2583e",
-            "9208cc67483704c84096d9747b4ed970e56bc8ac",
-            "d9f7719922d00d4f2ae59c514dc2aee7a2938dc9",
-            "90851fdb47636d9274eb546407be5f484a3a49a6",
-            "b2bc9f66a6ac77d5e80db4d4f6a7bd8242c98dca",
-            "a29743e386acc7814d5b96b8246125f9a24f4151",
-            "1c1cd66edc73cf14e5db5bd54b244aab737087a9",
-            "e2f5358dad9ad33cbdf7248abab957e9996eef4f",
-            "7875fa4e577d30f0caab833616c3f6a6d02bc173",
-            "1722a4c54d8d4ee60ca89e2d49f04a152d4b72d7",
-            "609de93708cd15deaa6e1adac399590691cc4cfd",
-            "80898ab7f1597e65d69ede2c7e40e0ac369f65c6",
-            "9208cc67483704c84096d9747b4ed970e56bc8ac",
-            "245f9f9e5458748e7582a09883e7879c050be3d6",
-            "c80497de8157dc3417bc386a633361c2573e2552",
-            "92b846558fdd4fbaacfb2cfc3772cab545b4e943",
-            "2c8d4e9a70037ea02f2248810ea678381c19eb6f",
-            "b0873a3dea67c02dcef1bfa360eb7ab09a40aec6",
-            "b0a0c269c36a874d717f79670803020c29258f80",
-            "a4850d6810353bb5abcee94696ce8ef56e9a5198",
-            "97fcb67b12232635260662783981b71183cd1af8",
-            "6ab51c7844ff6c57bd5881c58f13b5ad5d05e766",
-            "ecf1de43a7fd1dda110c99a2cf83dd1532e811fd",
-            "a91b28be435abf3e33f0c732c82a490e9ae607c4",
-            "426999574f12d1a737d5e54f041985e37230f510"]
-    
-    for h in hshs:
-        a = f._fetchMagnetFromTorrentzHelper(h)
-        print(a)
-
-        '''

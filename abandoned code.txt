@@ -1,0 +1,14 @@
+  
+def _queryRottenTomatoMovieFullCast(self, id_RT):
+    url = "http://api.rottentomatoes.com/api/public/v1.0/movies/%s/cast.json" % id_RT
+    params = {"apikey": APIKEY_RT}
+    
+    returned = self.scrape(url, params)
+    
+    if "cast" in returned:
+        toRet = json.loads(returned)["cast"]
+        for t in toRet:
+            t.pop("characters")
+        return toRet
+    else:
+        return []
